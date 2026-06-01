@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Raadsacties Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #F7F6F2;
+    --surface: #FFFFFF;
+    --surface2: #F0EFE9;
+    --border: rgba(0,0,0,0.08);
+    --border-strong: rgba(0,0,0,0.16);
+    --text: #1A1916;
+    --text2: #6B6A65;
+    --text3: #A8A7A2;
+    --accent: #1B4FD8;
+    --accent-bg: #EEF2FF;
+    --success: #2D7D46;
+    --success-bg: #EDFAF2;
+    --danger: #C0392B;
+    --danger-bg: #FEF0EE;
+    --warn: #A05C00;
+    --warn-bg: #FFF4E0;
+    --radius: 10px;
+    --radius-lg: 14px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 15px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* LAYOUT */
+  .shell { display: flex; min-height: 100vh; }
+
+  .sidebar {
+    width: 220px; flex-shrink: 0;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 2rem 1rem;
+    display: flex; flex-direction: column;
+    position: sticky; top: 0; height: 100vh;
+  }
+
+  .sidebar-logo {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 2.5rem; padding: 0 0.5rem;
+  }
+  .logo-mark {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: var(--text); display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .logo-mark svg { width: 16px; height: 16px; fill: none; stroke: white; stroke-width: 1.5; }
+  .logo-text { font-family: 'DM Serif Display', serif; font-size: 15px; color: var(--text); line-height: 1.2; }
+  .logo-sub { font-size: 11px; color: var(--text3); font-family: 'DM Sans', sans-serif; }
+
+  .nav { display: flex; flex-direction: column; gap: 2px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: var(--radius);
+    font-size: 14px; color: var(--text2);
+    cursor: pointer; border: none; background: none; width: 100%; text-align: left;
+    transition: background 0.1s, color 0.1s;
+  }
+  .nav-item:hover { background: var(--surface2); color: var(--text); }
+  .nav-item.active { background: var(--surface2); color: var(--text); font-weight: 500; }
+  .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.6; }
+  .nav-item.active svg { opacity: 1; }
+
+  .nav-divider { height: 1px; background: var(--border); margin: 10px 0; }
+
+  .nav-item.new-btn {
+    background: var(--text); color: white; font-weight: 500; margin-top: auto;
+  }
+  .nav-item.new-btn:hover { background: #333; }
+  .nav-item.new-btn svg { opacity: 1; stroke: white; }
+
+  .main { flex: 1; padding: 2.5rem 2.5rem; max-width: 900px; }
+
+  .page { display: none; }
+  .page.active { display: block; }
+
+  .page-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 28px; color: var(--text);
+    margin-bottom: 1.75rem;
+  }
+
+  /* METRICS */
+  .metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 2rem; }
+  .metric {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 1rem 1.125rem;
+    box-shadow: var(--shadow);
+  }
+  .metric-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+  .metric-value { font-size: 26px; font-weight: 500; color: var(--text); font-family: 'DM Serif Display', serif; }
+  .metric-value.danger { color: var(--danger); }
+  .metric-sub { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+  /* SECTION */
+  .section { margin-bottom: 2rem; }
+  .section-label {
+    font-size: 11px; font-weight: 500; color: var(--text3);
+    text-transform: uppercase; letter-spacing: 0.07em;
+    margin-bottom: 10px;
+  }
+
+  /* URGENCY LIST */
+  .urgency-list { display: flex; flex-direction: column; gap: 8px; }
+  .urgency-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 10px 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer; transition: border-color 0.12s;
+    box-shadow: var(--shadow);
+  }
+  .urgency-card:hover { border-color: var(--border-strong); }
+  .urgency-card.overdue { border-left: 3px solid var(--danger); }
+  .urgency-card.soon { border-left: 3px solid #E09000; }
+  .urgency-title { font-size: 13px; font-weight: 500; }
+  .urgency-meta { font-size: 12px; color: var(--text2); margin-top: 2px; }
+
+  /* CHARTS ROW */
+  .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .chart-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 1.25rem;
+    box-shadow: var(--shadow);
+  }
+  .chart-card-label { font-size: 12px; color: var(--text2); margin-bottom: 14px; font-weight: 500; }
+
+  .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+  .bar-name { font-size: 12px; color: var(--text2); width: 130px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
+  .bar-track { flex: 1; height: 7px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
+  .bar-count { font-size: 12px; color: var(--text3); width: 18px; text-align: right; }
+
+  .donut-wrap { display: flex; align-items: center; justify-content: center; gap: 1.5rem; }
+  .donut-canvas-wrap { position: relative; width: 110px; height: 110px; flex-shrink: 0; }
+  .donut-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); text-align: center; }
+  .donut-num { font-size: 22px; font-weight: 500; font-family: 'DM Serif Display', serif; }
+  .donut-lbl { font-size: 10px; color: var(--text3); }
+  .legend { display: flex; flex-direction: column; gap: 7px; }
+  .legend-row { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text2); }
+  .legend-dot { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+
+  /* THEMA CHART */
+  .thema-chart { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.25rem; box-shadow: var(--shadow); }
+
+  /* ACTIES LIST */
+  .filter-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; align-items: center; justify-content: space-between; }
+  .filters { display: flex; gap: 6px; }
+  .filter-btn {
+    font-size: 13px; padding: 5px 12px; border-radius: 999px;
+    border: 1px solid var(--border-strong); background: transparent;
+    color: var(--text2); cursor: pointer; font-family: 'DM Sans', sans-serif;
+    transition: background 0.1s, color 0.1s;
+  }
+  .filter-btn:hover, .filter-btn.active {
+    background: var(--text); color: white; border-color: var(--text);
+  }
+  .count-label { font-size: 12px; color: var(--text3); }
+
+  .actie-list { display: flex; flex-direction: column; gap: 8px; }
+  .actie-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 14px 18px;
+    display: grid; grid-template-columns: 1fr auto;
+    gap: 10px; cursor: pointer;
+    transition: border-color 0.12s, box-shadow 0.12s;
+    box-shadow: var(--shadow);
+  }
+  .actie-card:hover { border-color: var(--border-strong); box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+  .actie-card.overdue { border-left: 3px solid var(--danger); }
+  .actie-card.soon { border-left: 3px solid #E09000; }
+  .actie-title { font-size: 14px; font-weight: 500; margin-bottom: 5px; }
+  .actie-meta { font-size: 12px; color: var(--text2); display: flex; gap: 14px; flex-wrap: wrap; }
+  .actie-meta span { display: flex; align-items: center; gap: 4px; }
+  .actie-right { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+
+  .badge {
+    font-size: 11px; padding: 3px 9px; border-radius: 999px; font-weight: 500;
+    white-space: nowrap;
+  }
+  .badge-open { background: var(--accent-bg); color: var(--accent); }
+  .badge-afgerond { background: var(--success-bg); color: var(--success); }
+  .badge-verlopen { background: var(--danger-bg); color: var(--danger); }
+  .badge-soon { background: var(--warn-bg); color: var(--warn); }
+
+  .type-pill {
+    font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 500;
+  }
+
+  .empty { text-align: center; padding: 4rem 1rem; color: var(--text3); }
+  .empty svg { width: 36px; height: 36px; margin-bottom: 10px; opacity: 0.3; }
+
+  /* FORM */
+  .form-wrap { max-width: 520px; }
+  .form-section-title {
+    font-family: 'DM Serif Display', serif; font-size: 22px;
+    margin-bottom: 1.5rem;
+  }
+  .field { margin-bottom: 1.125rem; }
+  .field label { display: block; font-size: 13px; color: var(--text2); margin-bottom: 5px; font-weight: 500; }
+  .field input, .field select, .field textarea {
+    width: 100%; padding: 9px 12px;
+    border: 1px solid var(--border-strong); border-radius: var(--radius);
+    font-family: 'DM Sans', sans-serif; font-size: 14px;
+    background: var(--surface); color: var(--text);
+    transition: border-color 0.12s, box-shadow 0.12s;
+    outline: none;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus {
+    border-color: var(--accent); box-shadow: 0 0 0 3px rgba(27,79,216,0.1);
+  }
+  .field textarea { min-height: 90px; resize: vertical; line-height: 1.5; }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .form-actions { display: flex; gap: 10px; margin-top: 1.75rem; }
+  .btn-primary {
+    background: var(--text); color: white;
+    border: none; border-radius: var(--radius); padding: 10px 22px;
+    font-size: 14px; font-family: 'DM Sans', sans-serif; font-weight: 500;
+    cursor: pointer; transition: opacity 0.1s;
+  }
+  .btn-primary:hover { opacity: 0.85; }
+  .btn-secondary {
+    background: transparent; border: 1px solid var(--border-strong);
+    border-radius: var(--radius); padding: 10px 18px;
+    font-size: 14px; font-family: 'DM Sans', sans-serif;
+    color: var(--text2); cursor: pointer; transition: background 0.1s;
+  }
+  .btn-secondary:hover { background: var(--surface2); }
+
+  .info-box {
+    background: var(--accent-bg); border-radius: var(--radius);
+    padding: 12px 14px; font-size: 13px; color: #2240A0;
+    line-height: 1.6; margin-bottom: 1rem;
+  }
+
+  /* DETAIL */
+  .detail-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 1.75rem;
+    box-shadow: var(--shadow);
+  }
+  .detail-type { margin-bottom: 8px; }
+  .detail-title { font-family: 'DM Serif Display', serif; font-size: 22px; margin-bottom: 1.25rem; }
+  .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 2rem; margin-bottom: 1.25rem; }
+  .detail-key { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 3px; }
+  .detail-val { font-size: 14px; color: var(--text); }
+  .detail-notes {
+    border-top: 1px solid var(--border); padding-top: 1rem;
+    font-size: 14px; color: var(--text2); line-height: 1.7;
+  }
+  .detail-actions { display: flex; gap: 8px; margin-top: 1.25rem; flex-wrap: wrap; }
+  .btn-success {
+    background: var(--success-bg); color: var(--success);
+    border: 1px solid rgba(45,125,70,0.2); border-radius: var(--radius);
+    padding: 8px 14px; font-size: 13px; font-family: 'DM Sans', sans-serif;
+    cursor: pointer; font-weight: 500;
+  }
+  .btn-danger {
+    background: transparent; color: var(--danger);
+    border: 1px solid rgba(192,57,43,0.25); border-radius: var(--radius);
+    padding: 8px 14px; font-size: 13px; font-family: 'DM Sans', sans-serif;
+    cursor: pointer;
+  }
+  .btn-back {
+    background: transparent; border: 1px solid var(--border-strong);
+    border-radius: var(--radius); padding: 8px 14px;
+    font-size: 13px; font-family: 'DM Sans', sans-serif;
+    color: var(--text2); cursor: pointer; display: flex; align-items: center; gap: 6px;
+    margin-bottom: 1.25rem;
+  }
+  .btn-back:hover { background: var(--surface2); }
+  .btn-mail {
+    background: transparent; color: var(--accent);
+    border: 1px solid rgba(27,79,216,0.25); border-radius: var(--radius);
+    padding: 8px 14px; font-size: 13px; font-family: 'DM Sans', sans-serif;
+    cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;
+  }
+
+  /* LOADING */
+  .loading {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 200px; color: var(--text3); font-size: 14px; gap: 10px;
+  }
+  .spinner {
+    width: 18px; height: 18px; border: 2px solid var(--border);
+    border-top-color: var(--text2); border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .toast {
+    position: fixed; bottom: 1.5rem; right: 1.5rem;
+    background: var(--text); color: white;
+    padding: 10px 18px; border-radius: var(--radius);
+    font-size: 13px; opacity: 0; transition: opacity 0.2s;
+    pointer-events: none; z-index: 999;
+  }
+  .toast.show { opacity: 1; }
+
+  @media (max-width: 700px) {
+    .shell { flex-direction: column; }
+    .sidebar { width: 100%; height: auto; position: static; flex-direction: row; align-items: center; padding: 1rem; }
+    .sidebar-logo { margin-bottom: 0; margin-right: auto; }
+    .nav { flex-direction: row; }
+    .nav-divider { display: none; }
+    .nav-item.new-btn { margin-top: 0; }
+    .main { padding: 1.5rem 1rem; }
+    .metrics { grid-template-columns: repeat(3, 1fr); }
+    .charts-row { grid-template-columns: 1fr; }
+    .field-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark">
+        <svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </div>
+      <div>
+        <div class="logo-text">Raadsacties</div>
+        <div class="logo-sub">Gemeenteraad tracker</div>
+      </div>
+    </div>
+    <nav class="nav">
+      <button class="nav-item active" onclick="showPage('dashboard')" id="nav-dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </button>
+      <button class="nav-item" onclick="showPage('acties')" id="nav-acties">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 0 2-2h2a2 2 0 0 0 2 2"/></svg>
+        Alle acties
+      </button>
+      <div class="nav-divider"></div>
+      <button class="nav-item new-btn" onclick="showPage('nieuw')" id="nav-nieuw">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Nieuwe actie
+      </button>
+    </nav>
+  </aside>
+
+  <main class="main">
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <h1 class="page-title">Dashboard</h1>
+      <div id="dashboard-content"><div class="loading"><div class="spinner"></div> Laden…</div></div>
+    </div>
+
+    <!-- ACTIES -->
+    <div class="page" id="page-acties">
+      <h1 class="page-title">Alle acties</h1>
+      <div class="filter-bar">
+        <div class="filters">
+          <button class="filter-btn active" onclick="setFilter('alle', this)">Alle</button>
+          <button class="filter-btn" onclick="setFilter('open', this)">Open</button>
+          <button class="filter-btn" onclick="setFilter('afgerond', this)">Afgerond</button>
+          <button class="filter-btn" onclick="setFilter('verlopen', this)">Verlopen</button>
+        </div>
+        <span class="count-label" id="actie-count"></span>
+      </div>
+      <div id="actie-list-wrap"><div class="loading"><div class="spinner"></div> Laden…</div></div>
+    </div>
+
+    <!-- DETAIL -->
+    <div class="page" id="page-detail">
+      <button class="btn-back" onclick="showPage('acties')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        Terug naar overzicht
+      </button>
+      <div id="detail-wrap"></div>
+    </div>
+
+    <!-- NIEUW / BEWERKEN -->
+    <div class="page" id="page-nieuw">
+      <div class="form-wrap">
+        <h2 class="form-section-title" id="form-heading">Nieuwe raadsactie</h2>
+        <div class="field">
+          <label for="f-type">Type raadsactie</label>
+          <select id="f-type">
+            <option value="Schriftelijke vraag">Schriftelijke vraag</option>
+            <option value="Motie">Motie</option>
+            <option value="Amendement">Amendement</option>
+            <option value="Toezegging (college)">Toezegging (college)</option>
+            <option value="Initiatiefvoorstel">Initiatiefvoorstel</option>
+            <option value="Anders">Anders</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-titel">Omschrijving / titel</label>
+          <input type="text" id="f-titel" placeholder="Bijv. Vraag over fietsinfra Spoorlaan 2026" />
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="f-datum">Datum ingediend</label>
+            <input type="date" id="f-datum" />
+          </div>
+          <div class="field">
+            <label for="f-deadline">Deadline college-reactie</label>
+            <input type="date" id="f-deadline" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="f-thema">Thema / dossier</label>
+          <input type="text" id="f-thema" placeholder="Bijv. Mobiliteit, Wonen, Financiën…" />
+        </div>
+        <div class="field">
+          <label for="f-notities">Notities</label>
+          <textarea id="f-notities" placeholder="Context, toelichting, links, namen…"></textarea>
+        </div>
+        <div class="field">
+          <label for="f-email">E-mailadres voor herinneringen</label>
+          <input type="email" id="f-email" placeholder="jouw@email.nl" />
+        </div>
+        <div class="info-box">
+          Klik op "Stuur herinnering" in de detailpagina om een vooraf ingevulde e-mail naar jezelf te sturen met alle details en de deadline.
+        </div>
+        <div class="form-actions">
+          <button class="btn-primary" onclick="saveActie()" id="save-btn">Opslaan</button>
+          <button class="btn-secondary" onclick="showPage('acties')">Annuleren</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SUPABASE_URL = 'https://rqjyczhtuaqrfkxefnpo.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_cJGSSEHg_wt38GgvAG1xtw_EIYOfdKl';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let allActies = [];
+let currentFilter = 'alle';
+let editId = null;
+let donutChart = null;
+
+const TYPE_COLORS = {
+  'Schriftelijke vraag':  { bg: '#EEF2FF', color: '#1B4FD8' },
+  'Motie':                { bg: '#F3F0FE', color: '#5B21B6' },
+  'Amendement':           { bg: '#FEF0EE', color: '#9D2016' },
+  'Toezegging (college)': { bg: '#EDFAF2', color: '#2D7D46' },
+  'Initiatiefvoorstel':   { bg: '#FFF4E0', color: '#A05C00' },
+  'Anders':               { bg: '#F0EFE9', color: '#6B6A65' },
+};
+
+function today() { return new Date().toISOString().slice(0, 10); }
+
+function daysUntil(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr); const now = new Date(); now.setHours(0,0,0,0);
+  return Math.round((d - now) / 86400000);
+}
+
+function urgencyOf(a) {
+  if (a.status === 'afgerond') return '';
+  const d = daysUntil(a.deadline);
+  if (d === null) return '';
+  if (d < 0) return 'overdue';
+  if (d <= 7) return 'soon';
+  return '';
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmtDate(d) {
+  if (!d) return '—';
+  const [y,m,day] = d.split('-'); return `${day}-${m}-${y}`;
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function showPage(p) {
+  document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
+  document.getElementById('page-' + p).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  const nb = document.getElementById('nav-' + p);
+  if (nb) nb.classList.add('active');
+  if (p === 'dashboard') renderDashboard();
+  if (p === 'acties') renderActies();
+  if (p === 'nieuw' && !editId) resetForm();
+}
+
+async function loadActies() {
+  const { data, error } = await sb.from('raadsacties').select('*').order('created_at', { ascending: false });
+  if (error) { console.error(error); return; }
+  allActies = data || [];
+}
+
+function resetForm() {
+  editId = null;
+  document.getElementById('form-heading').textContent = 'Nieuwe raadsactie';
+  document.getElementById('save-btn').textContent = 'Opslaan';
+  ['f-titel','f-thema','f-notities','f-email'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('f-type').value = 'Schriftelijke vraag';
+  document.getElementById('f-datum').value = today();
+  document.getElementById('f-deadline').value = '';
+}
+
+async function saveActie() {
+  const titel = document.getElementById('f-titel').value.trim();
+  if (!titel) { alert('Geef een titel op.'); return; }
+  const payload = {
+    type: document.getElementById('f-type').value,
+    titel,
+    datum: document.getElementById('f-datum').value,
+    deadline: document.getElementById('f-deadline').value || null,
+    thema: document.getElementById('f-thema').value.trim() || null,
+    notities: document.getElementById('f-notities').value.trim() || null,
+    email: document.getElementById('f-email').value.trim() || null,
+  };
+
+  const btn = document.getElementById('save-btn');
+  btn.textContent = 'Opslaan…'; btn.disabled = true;
+
+  let error;
+  if (editId) {
+    ({ error } = await sb.from('raadsacties').update(payload).eq('id', editId));
+  } else {
+    payload.id = Date.now().toString();
+    payload.status = 'open';
+    ({ error } = await sb.from('raadsacties').insert(payload));
+  }
+
+  btn.disabled = false;
+  if (error) { alert('Fout bij opslaan: ' + error.message); btn.textContent = 'Opslaan'; return; }
+  showToast(editId ? 'Actie bijgewerkt' : 'Actie toegevoegd');
+  editId = null;
+  await loadActies();
+  showPage('acties');
+}
+
+function setFilter(f, btn) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderActiesList();
+}
+
+function filteredActies() {
+  return allActies.filter(a => {
+    if (currentFilter === 'alle') return true;
+    if (currentFilter === 'open') return a.status === 'open';
+    if (currentFilter === 'afgerond') return a.status === 'afgerond';
+    if (currentFilter === 'verlopen') {
+      if (a.status === 'afgerond') return false;
+      const d = daysUntil(a.deadline); return d !== null && d < 0;
+    }
+    return true;
+  });
+}
+
+function renderActies() {
+  renderActiesList();
+}
+
+function renderActiesList() {
+  const fa = filteredActies();
+  document.getElementById('actie-count').textContent = fa.length + ' acties';
+  const wrap = document.getElementById('actie-list-wrap');
+  if (!fa.length) {
+    wrap.innerHTML = `<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg><br>Geen acties gevonden</div>`;
+    return;
+  }
+  wrap.innerHTML = `<div class="actie-list">${fa.map(a => actieCardHtml(a)).join('')}</div>`;
+}
+
+function actieCardHtml(a) {
+  const tc = TYPE_COLORS[a.type] || TYPE_COLORS['Anders'];
+  const uc = urgencyOf(a);
+  const d = daysUntil(a.deadline);
+  let dTxt = a.deadline ? fmtDate(a.deadline) : '—';
+  let statusBadge = '';
+  if (a.status === 'afgerond') {
+    statusBadge = `<span class="badge badge-afgerond">Afgerond</span>`;
+  } else if (uc === 'overdue') {
+    dTxt += ` (${Math.abs(d)}d verlopen)`;
+    statusBadge = `<span class="badge badge-verlopen">Verlopen</span>`;
+  } else if (uc === 'soon') {
+    dTxt += ` (nog ${d}d)`;
+    statusBadge = `<span class="badge badge-soon">Binnenkort</span>`;
+  } else {
+    statusBadge = `<span class="badge badge-open">Open</span>`;
+  }
+  return `<div class="actie-card ${uc}" onclick="showDetail('${a.id}')">
+    <div>
+      <div class="actie-title">${esc(a.titel)}</div>
+      <div class="actie-meta">
+        <span>📅 ${fmtDate(a.datum)}</span>
+        <span>⏱ ${dTxt}</span>
+        ${a.thema ? `<span>🏷 ${esc(a.thema)}</span>` : ''}
+      </div>
+    </div>
+    <div class="actie-right">
+      <span class="type-pill" style="background:${tc.bg}; color:${tc.color};">${esc(a.type)}</span>
+      ${statusBadge}
+    </div>
+  </div>`;
+}
+
+function showDetail(id) {
+  const a = allActies.find(x => x.id === id);
+  if (!a) return;
+  const tc = TYPE_COLORS[a.type] || TYPE_COLORS['Anders'];
+  const d = daysUntil(a.deadline);
+  let dTxt = a.deadline ? fmtDate(a.deadline) : 'Niet opgegeven';
+  if (a.status !== 'afgerond' && d !== null) {
+    if (d < 0) dTxt += ` — ${Math.abs(d)} dagen verlopen`;
+    else if (d === 0) dTxt += ' — vandaag!';
+    else dTxt += ` — nog ${d} dagen`;
+  }
+  const mailHref = buildMailHref(a);
+  document.getElementById('detail-wrap').innerHTML = `
+    <div class="detail-card">
+      <div class="detail-type"><span class="type-pill" style="background:${tc.bg};color:${tc.color};">${esc(a.type)}</span></div>
+      <h2 class="detail-title">${esc(a.titel)}</h2>
+      <div class="detail-grid">
+        <div><div class="detail-key">Ingediend</div><div class="detail-val">${fmtDate(a.datum)}</div></div>
+        <div><div class="detail-key">Deadline reactie</div><div class="detail-val">${dTxt}</div></div>
+        <div><div class="detail-key">Thema</div><div class="detail-val">${esc(a.thema || '—')}</div></div>
+        <div><div class="detail-key">Status</div><div class="detail-val">${a.status === 'afgerond' ? '✓ Afgerond' + (a.datum_afgerond ? ' op ' + fmtDate(a.datum_afgerond) : '') : 'Open'}</div></div>
+      </div>
+      ${a.notities ? `<div class="detail-notes">${esc(a.notities).replace(/\n/g,'<br>')}</div>` : ''}
+      <div class="detail-actions">
+        ${a.status !== 'afgerond' ? `<button class="btn-success" onclick="markAfgerond('${a.id}')">✓ Markeer afgerond</button>` : ''}
+        <button class="btn-secondary" onclick="editActie('${a.id}')">✎ Bewerken</button>
+        ${mailHref ? `<a class="btn-mail" href="${mailHref}">✉ Stuur herinnering</a>` : ''}
+        <button class="btn-danger" onclick="deleteActie('${a.id}')">✕ Verwijderen</button>
+      </div>
+    </div>`;
+  showPage('detail');
+}
+
+function buildMailHref(a) {
+  if (!a.email || !a.deadline) return null;
+  const d = daysUntil(a.deadline);
+  const sub = encodeURIComponent(`Herinnering: ${a.type} — ${a.titel}`);
+  const body = encodeURIComponent(
+    `Beste,\n\nHerinnering voor de volgende raadsactie:\n\nType: ${a.type}\nOnderwerp: ${a.titel}\nDeadline: ${fmtDate(a.deadline)}` +
+    (d !== null ? ` (${d >= 0 ? 'nog ' + d : Math.abs(d) + ' dagen verlopen'})` : '') +
+    `\nThema: ${a.thema || '—'}\n\n${a.notities ? 'Notities:\n' + a.notities + '\n\n' : ''}Met vriendelijke groet,\nJouw raadsacties tracker`
+  );
+  return `mailto:${a.email}?subject=${sub}&body=${body}`;
+}
+
+async function markAfgerond(id) {
+  const { error } = await sb.from('raadsacties')
+    .update({ status: 'afgerond', datum_afgerond: today() }).eq('id', id);
+  if (error) { alert('Fout: ' + error.message); return; }
+  showToast('Actie afgerond');
+  await loadActies();
+  showDetail(id);
+}
+
+async function deleteActie(id) {
+  if (!confirm('Weet je zeker dat je deze actie wilt verwijderen?')) return;
+  const { error } = await sb.from('raadsacties').delete().eq('id', id);
+  if (error) { alert('Fout: ' + error.message); return; }
+  showToast('Actie verwijderd');
+  await loadActies();
+  showPage('acties');
+}
+
+function editActie(id) {
+  const a = allActies.find(x => x.id === id);
+  if (!a) return;
+  editId = id;
+  document.getElementById('form-heading').textContent = 'Actie bewerken';
+  document.getElementById('save-btn').textContent = 'Wijzigingen opslaan';
+  document.getElementById('f-type').value = a.type;
+  document.getElementById('f-titel').value = a.titel;
+  document.getElementById('f-datum').value = a.datum || '';
+  document.getElementById('f-deadline').value = a.deadline || '';
+  document.getElementById('f-thema').value = a.thema || '';
+  document.getElementById('f-notities').value = a.notities || '';
+  document.getElementById('f-email').value = a.email || '';
+  document.getElementById('page-detail').classList.remove('active');
+  showPage('nieuw');
+}
+
+async function renderDashboard() {
+  document.getElementById('dashboard-content').innerHTML = '<div class="loading"><div class="spinner"></div> Laden…</div>';
+  await loadActies();
+  const open = allActies.filter(a => a.status === 'open');
+  const afgerond = allActies.filter(a => a.status === 'afgerond');
+  const verlopen = allActies.filter(a => a.status === 'open' && daysUntil(a.deadline) !== null && daysUntil(a.deadline) < 0);
+  const soonList = allActies.filter(a => { if(a.status==='afgerond') return false; const d=daysUntil(a.deadline); return d!==null&&d>=0&&d<=7; });
+  const closed = allActies.filter(a => a.status==='afgerond'&&a.datum&&a.datum_afgerond);
+  let avgDays = '—';
+  if (closed.length) {
+    const tot = closed.reduce((s,a) => s + Math.round((new Date(a.datum_afgerond)-new Date(a.datum))/86400000), 0);
+    avgDays = Math.round(tot/closed.length) + 'd';
+  }
+
+  const urgents = allActies.filter(a => {
+    if(a.status==='afgerond') return false;
+    const d=daysUntil(a.deadline); return d!==null&&d<=7;
+  }).sort((a,b)=>daysUntil(a.deadline)-daysUntil(b.deadline)).slice(0,5);
+
+  const typeCounts = {};
+  allActies.forEach(a => { typeCounts[a.type]=(typeCounts[a.type]||0)+1; });
+  const typeSorted = Object.entries(typeCounts).sort((a,b)=>b[1]-a[1]);
+  const maxType = typeSorted[0]?.[1]||1;
+
+  const themaCounts = {};
+  allActies.forEach(a => {
+    const t = a.thema||'Overig';
+    if(!themaCounts[t]) themaCounts[t]={open:0,afgerond:0};
+    if(a.status==='afgerond') themaCounts[t].afgerond++; else themaCounts[t].open++;
+  });
+  const themaSorted = Object.entries(themaCounts).sort((a,b)=>(b[1].open+b[1].afgerond)-(a[1].open+a[1].afgerond));
+  const maxThema = themaSorted[0] ? themaSorted[0][1].open+themaSorted[0][1].afgerond : 1;
+
+  document.getElementById('dashboard-content').innerHTML = `
+    <div class="metrics">
+      <div class="metric"><div class="metric-label">Totaal</div><div class="metric-value">${allActies.length}</div></div>
+      <div class="metric"><div class="metric-label">Open</div><div class="metric-value">${open.length}</div></div>
+      <div class="metric"><div class="metric-label">Afgerond</div><div class="metric-value">${afgerond.length}</div></div>
+      <div class="metric"><div class="metric-label">Verlopen</div><div class="metric-value ${verlopen.length?'danger':''}">${verlopen.length}</div></div>
+      <div class="metric"><div class="metric-label">Gem. reactietijd</div><div class="metric-value">${avgDays}</div><div class="metric-sub">afgeronde acties</div></div>
+    </div>
+
+    ${urgents.length ? `
+    <div class="section">
+      <div class="section-label">Naderende deadlines</div>
+      <div class="urgency-list">
+        ${urgents.map(a => {
+          const d=daysUntil(a.deadline);
+          const uc=urgencyOf(a);
+          const lbl=d<0?`${Math.abs(d)} dagen verlopen`:d===0?'Vandaag!':`Nog ${d} dagen`;
+          return `<div class="urgency-card ${uc==='overdue'?'overdue':'soon'}" onclick="showDetail('${a.id}')">
+            <div><div class="urgency-title">${esc(a.titel)}</div><div class="urgency-meta">${esc(a.type)}${a.thema?' · '+esc(a.thema):''} · deadline ${fmtDate(a.deadline)}</div></div>
+            <span class="badge ${uc==='overdue'?'badge-verlopen':'badge-soon'}">${lbl}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : ''}
+
+    <div class="section charts-row">
+      <div class="chart-card">
+        <div class="chart-card-label">Acties per type</div>
+        ${typeSorted.length ? typeSorted.map(([type,count]) => {
+          const tc=TYPE_COLORS[type]||TYPE_COLORS['Anders'];
+          return `<div class="bar-row">
+            <div class="bar-name">${esc(type)}</div>
+            <div class="bar-track"><div class="bar-fill" style="width:${Math.round(count/maxType*100)}%;background:${tc.color};"></div></div>
+            <div class="bar-count">${count}</div>
+          </div>`;
+        }).join('') : '<div style="font-size:13px;color:var(--text3);padding:1rem 0;">Nog geen acties</div>'}
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-label">Open vs afgerond</div>
+        <div class="donut-wrap">
+          <div class="donut-canvas-wrap">
+            <canvas id="donut-canvas" width="110" height="110" role="img" aria-label="Donut chart open versus afgeronde acties">${open.length} open, ${afgerond.length} afgerond</canvas>
+            <div class="donut-center"><div class="donut-num">${allActies.length}</div><div class="donut-lbl">totaal</div></div>
+          </div>
+          <div class="legend">
+            <div class="legend-row"><span class="legend-dot" style="background:#1B4FD8"></span>Open (${open.length - verlopen.length})</div>
+            <div class="legend-row"><span class="legend-dot" style="background:#C0392B"></span>Verlopen (${verlopen.length})</div>
+            <div class="legend-row"><span class="legend-dot" style="background:#2D7D46"></span>Afgerond (${afgerond.length})</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    ${themaSorted.length ? `
+    <div class="section">
+      <div class="section-label">Acties per thema</div>
+      <div class="thema-chart">
+        ${themaSorted.map(([thema, counts]) => {
+          const tot=counts.open+counts.afgerond;
+          return `<div class="bar-row" style="margin-bottom:12px;">
+            <div class="bar-name" style="width:110px;">${esc(thema)}</div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:4px;">
+              <div class="bar-track" style="height:6px;"><div class="bar-fill" style="width:${Math.round(counts.open/maxThema*100)}%;background:#1B4FD8;"></div></div>
+              <div class="bar-track" style="height:6px;"><div class="bar-fill" style="width:${Math.round(counts.afgerond/maxThema*100)}%;background:#2D7D46;"></div></div>
+            </div>
+            <div class="bar-count">${tot}</div>
+          </div>`;
+        }).join('')}
+        <div style="display:flex;gap:1rem;font-size:11px;color:var(--text3);margin-top:6px;">
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#1B4FD8;margin-right:4px;"></span>Open</span>
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#2D7D46;margin-right:4px;"></span>Afgerond</span>
+        </div>
+      </div>
+    </div>` : ''}
+  `;
+
+  if (donutChart) { donutChart.destroy(); donutChart = null; }
+  const openOnly = open.length - verlopen.length;
+  const donutData = allActies.length > 0
+    ? [openOnly, verlopen.length, afgerond.length]
+    : [1];
+  const donutColors = allActies.length > 0
+    ? ['#1B4FD8','#C0392B','#2D7D46']
+    : ['#E0DED8'];
+  donutChart = new Chart(document.getElementById('donut-canvas'), {
+    type: 'doughnut',
+    data: { datasets: [{ data: donutData, backgroundColor: donutColors, borderWidth: 0 }] },
+    options: { responsive: false, cutout: '72%', plugins: { legend: { display: false }, tooltip: { enabled: allActies.length > 0 } }, animation: { duration: 400 } }
+  });
+}
+
+(async () => {
+  await loadActies();
+  renderDashboard();
+})();
+</script>
+</body>
+</html>
